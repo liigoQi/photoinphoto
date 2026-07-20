@@ -535,7 +535,7 @@ function resetAll() {
   // 回到首屏相机
   $('#editor').style.display = 'none';
   $('#home').style.display = 'block';
-  ensureCamera().then(() => camBg.play().catch(() => {}));
+  ensureCameraAlive().then(resumeCamBg);
 }
 $('#edit-reset').onclick = () => {
   if (confirm('清空当前作品，重新做一张？')) resetAll();
@@ -760,6 +760,32 @@ async function ensureCamera() {
     alert('无法访问摄像头：' + err.message + '\n（需要 HTTPS 或 localhost 环境，并授权摄像头）');
   }
 }
+
+// 相机轨道可能被系统回收（切 App/电话后 readyState=ended）：检查活性，死了重新取流
+async function ensureCameraAlive() {
+  const track = state.stream && state.stream.getVideoTracks()[0];
+  if (state.stream && (!track || track.readyState === 'ended')) {
+    state.stream.getTracks().forEach(t => t.stop());
+    state.stream = null;
+  }
+  await ensureCamera();
+}
+
+// 恢复首屏画面；播放被拒时挂「下次触摸自动恢复」兜底，避免黑屏
+function resumeCamBg() {
+  camBg.play().catch(() => {
+    document.addEventListener('pointerdown', () => camBg.play().catch(() => {}), { once: true });
+  });
+}
+
+// 从后台切回页面时统一恢复
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  ensureCameraAlive().then(() => {
+    if ($('#home').style.display !== 'none') resumeCamBg();
+    else syncVideo(); // 编辑页：恢复取景框内画面
+  });
+});
 
 function applyMirror() {
   const m = state.facing === 'user';
