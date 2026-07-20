@@ -83,10 +83,17 @@
   }
   .frame.selected { z-index: 3; }
   .frame .fx { position: absolute; inset: 0; }
-  .frame.selected .fx { outline: 2px dashed rgba(255,255,255,.85); outline-offset: 5px; }
+  .frame.selected .fx::after,
+  .frame.selected .fx::before {
+    content: ''; position: absolute; inset: -7px; pointer-events: none; z-index: 6;
+  }
+  /* 黑底白芯双层虚线：深/浅背景上都清晰可见 */
+  .frame.selected .fx::after { border: 4px dashed rgba(0,0,0,.55); }
+  .frame.selected .fx::before { border: 2px dashed rgba(255,255,255,.95); }
   /* 拉伸手柄：右=拉宽，下=拉高，右下=同时 */
   .ff-handle {
     position: absolute; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.55);
+    border: 1px solid rgba(0,0,0,.35);
     display: none; z-index: 5; touch-action: none;
   }
   .frame.selected .ff-handle { display: block; }
@@ -665,6 +672,7 @@ function renderFrame(f) {
 function updateMask(f) {
   const kind = TYPES[f.type].kind;
   if (kind === 'draw') {
+    f.customMask = buildDrawnMask(f.drawGeo, f.feather); // 按当前羽化重渲染
     const url = `url(${f.customMask.toDataURL()})`;
     f.viewport.style.webkitMaskImage = url;
     f.viewport.style.maskImage = url;
@@ -697,17 +705,18 @@ function syncActionBar() {
   $('#ab-draw').style.display = state.drawing ? 'flex' : 'none';
   if (state.drawing) return;
   const f = selectedFrame();
-  const isShape = f && TYPES[f.type].kind === 'shape';
+  const kind = f && TYPES[f.type].kind;
+  const hasSliders = kind === 'shape' || kind === 'draw'; // 形状与手绘框都可调发散
   $('#ab-shutter').style.display = f && !f.captured ? 'block' : 'none';
   $('#ab-flip').style.display = f && !f.captured ? 'flex' : 'none';
   $('#ab-retake').style.display = f && f.captured ? 'flex' : 'none';
   $('#ab-del').style.display = f ? 'flex' : 'none';
-  $('#ab-sliders').style.display = isShape ? 'flex' : 'none';
-  $('#ab-hint').style.display = isShape ? 'none' : 'block';
-  if (isShape) {
+  $('#ab-sliders').style.display = hasSliders ? 'flex' : 'none';
+  $('#ab-hint').style.display = hasSliders ? 'none' : 'block';
+  if (hasSliders) {
     $('#feather-range').value = f.feather;
     $('#sr-radius').style.display = f.type === 'rrect' ? 'flex' : 'none';
-    $('#radius-range').value = f.radius;
+    if (f.type === 'rrect') $('#radius-range').value = f.radius;
   }
   if (!f) $('#ab-hint').innerHTML = '点右下角按钮<br>添加取景框';
   else if (f.captured) $('#ab-hint').textContent = '拖动移动 · 双指旋转缩放 · 拖白色手柄拉宽拉长';
@@ -716,7 +725,9 @@ function syncActionBar() {
 
 $('#feather-range').addEventListener('input', e => {
   const f = selectedFrame();
-  if (!f || TYPES[f.type].kind !== 'shape') return;
+  if (!f) return;
+  const kind = TYPES[f.type].kind;
+  if (kind !== 'shape' && kind !== 'draw') return;
   f.feather = +e.target.value;
   updateMask(f);
 });
@@ -1122,7 +1133,7 @@ $('#draw-done').onclick = () => {
   if (drawPts.length < DRAW_MIN_PTS) { alert('先圈出一个区域再生成'); return; }
   const sw = stage.clientWidth, sh = stage.clientHeight;
   const pts = chaikin(drawPts, 2);
-  const m = 8;
+  const m = 20; // 留白：给羽化外扩和描边余量
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const p of pts) {
     minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
@@ -1130,35 +1141,43 @@ $('#draw-done').onclick = () => {
   }
   minX -= m; minY -= m; maxX += m; maxY += m;
   const bw = maxX - minX, bh = maxY - minY;
-  // 手绘蒙版：白色填充 + 轻微羽化，分辨率适配导出
-  const scale = Math.min(1024 / bw, 1024 / bh, 4);
-  const mc = document.createElement('canvas');
-  mc.width = Math.max(2, Math.round(bw * scale));
-  mc.height = Math.max(2, Math.round(bh * scale));
-  const mx = mc.getContext('2d');
-  mx.scale(scale, scale);
-  mx.translate(-minX, -minY);
-  mx.beginPath();
-  mx.moveTo(pts[0].x, pts[0].y);
-  for (const p of pts) mx.lineTo(p.x, p.y);
-  mx.closePath();
-  mx.fillStyle = '#fff';
-  mx.shadowColor = '#fff';
-  mx.shadowBlur = 2 * scale;
-  mx.fill();
+  // 几何存下来，羽化调整时按 drawGeo 重新渲染蒙版
   const f = {
     id: 'f' + (++seq), type: 'draw',
     cx: (minX + bw / 2) / sw, cy: (minY + bh / 2) / sh,
     w: bw / sw, h: bh / sw,
-    rot: 0, feather: 0, captured: null, caption: '',
-    customMask: mc,
+    rot: 0, feather: 2, captured: null, caption: '',
+    drawGeo: { pts, minX, minY, bw, bh },
+    customMask: null,
   };
+  f.customMask = buildDrawnMask(f.drawGeo, f.feather);
   state.frames.push(f);
   buildFrameEl(f);
   exitDrawMode();
   select(f.id);
   ensureCamera();
 };
+
+/* 手绘蒙版：按存储的多边形 + 羽化值渲染（白色填充 + 阴影模拟高斯） */
+function buildDrawnMask(geo, feather) {
+  const scale = Math.min(1024 / geo.bw, 1024 / geo.bh, 4);
+  const mc = document.createElement('canvas');
+  mc.width = Math.max(2, Math.round(geo.bw * scale));
+  mc.height = Math.max(2, Math.round(geo.bh * scale));
+  const mx = mc.getContext('2d');
+  mx.scale(scale, scale);
+  mx.translate(-geo.minX, -geo.minY);
+  mx.beginPath();
+  mx.moveTo(geo.pts[0].x, geo.pts[0].y);
+  for (const p of geo.pts) mx.lineTo(p.x, p.y);
+  mx.closePath();
+  mx.fillStyle = '#fff';
+  mx.shadowColor = '#fff';
+  // 绝对柔度：羽化值 × 1.2 舞台像素，上限 18 以防超出蒙版留白被裁边
+  mx.shadowBlur = Math.min(feather * 1.2, 18) * scale;
+  mx.fill();
+  return mc;
+}
 
 /* ---------------- 导出合成 ---------------- */
 function loadImgEl(src) {
