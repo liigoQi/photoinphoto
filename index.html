@@ -287,27 +287,37 @@
 
   /* ---------- 首次使用引导 ---------- */
   #onboard {
-    position: fixed; inset: 0; background: #111; z-index: 80;
-    display: none; align-items: center; justify-content: center; padding: 32px;
+    position: fixed; inset: 0; background: rgba(8,8,10,.52); z-index: 80;
+    display: none; flex-direction: column; align-items: center;
   }
-  .ob-card { width: 100%; max-width: 360px; }
-  .ob-title { font-size: 34px; font-weight: 700; text-align: center; letter-spacing: 4px; }
-  .ob-sub { color: #8e8e93; text-align: center; font-size: 14px; margin: 10px 0 32px; }
-  .ob-row {
-    display: flex; gap: 14px; align-items: center; margin-bottom: 18px;
-    font-size: 14px; line-height: 1.55; color: #d1d1d6;
+  .ob-top { margin-top: 14vh; text-align: center; }
+  .ob-title { font-size: 34px; font-weight: 700; letter-spacing: 4px; text-shadow: 0 2px 10px rgba(0,0,0,.5); }
+  .ob-sub { color: rgba(255,255,255,.75); font-size: 14px; margin-top: 10px; text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+  .ob-mid {
+    margin-top: 12vh; display: flex; gap: 12px; align-items: center;
+    background: rgba(28,28,30,.88); border-radius: 16px; padding: 14px 18px;
+    font-size: 13px; line-height: 1.6; color: #d1d1d6;
   }
-  .ob-row b { color: #fff; font-weight: 600; }
   .ob-ic {
-    flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;
+    flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
     background: #2c2c2e; display: flex; align-items: center; justify-content: center;
   }
-  .ob-ic svg { width: 20px; height: 20px; }
-  #ob-start {
-    width: 100%; margin-top: 16px; background: #fc3158; color: #fff; border: none;
-    border-radius: 24px; padding: 14px; font-size: 17px; font-weight: 600;
+  .ob-ic svg { width: 19px; height: 19px; }
+  .ob-tap {
+    margin-top: 20px; color: rgba(255,255,255,.85); font-size: 13px;
+    animation: ob-pulse 1.6s ease-in-out infinite;
   }
-  #ob-start:active { transform: scale(.97); }
+  @keyframes ob-pulse { 50% { opacity: .4; } }
+  .ob-bottom {
+    margin-top: auto; margin-bottom: calc(104px + env(safe-area-inset-bottom));
+    width: 100%; display: flex; justify-content: space-between; padding: 0 30px;
+  }
+  .ob-hint {
+    width: 78px; text-align: center; font-size: 12px; line-height: 1.4;
+    color: #fff; text-shadow: 0 1px 5px rgba(0,0,0,.65);
+  }
+  .ob-arrow { display: block; font-size: 13px; margin-top: 3px; animation: ob-bob 1.2s ease-in-out infinite; }
+  @keyframes ob-bob { 50% { transform: translateY(4px); } }
 </style>
 </head>
 <body>
@@ -397,24 +407,21 @@
   <div id="sheet-row"></div>
 </div>
 
-<!-- 首次使用引导 -->
+<!-- 首次使用引导：半透明盖在首屏上，箭头指向真实按钮 -->
 <div id="onboard">
-  <div class="ob-card">
+  <div class="ob-top">
     <div class="ob-title">相中相</div>
     <div class="ob-sub">在照片里套取景框，框里再拍一个世界</div>
-    <div class="ob-row">
-      <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5" fill="#fff" stroke="none"/><path d="M4.5 17.5l4.5-3.8 3.5 3 3-2.4 4 3.2"/></svg></span>
-      <span>按快门把眼前画面定格为背景，或点<b>左下角</b>从相册选一张</span>
-    </div>
-    <div class="ob-row">
-      <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M4 8.5V6a2 2 0 012-2h2.5M15.5 4H18a2 2 0 012 2v2.5M20 15.5V18a2 2 0 01-2 2h-2.5M8.5 20H6a2 2 0 01-2-2v-2.5"/><circle cx="12" cy="12" r="3.2"/></svg></span>
-      <span>点<b>右下角</b>添加取景框：形状、拍立得、传送门，或用画笔随手圈一块</span>
-    </div>
-    <div class="ob-row">
-      <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
-      <span>框里就是镜头，对准按快门；拖动移动，双指旋转缩放，边缘白点拉宽拉高</span>
-    </div>
-    <button id="ob-start">开始玩</button>
+  </div>
+  <div class="ob-mid">
+    <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
+    <span>框里就是镜头，对准按快门<br>拖动移动 · 双指旋转缩放 · 边缘白点拉宽拉高</span>
+  </div>
+  <div class="ob-tap">点任意位置开始</div>
+  <div class="ob-bottom">
+    <div class="ob-hint">从相册<br>选背景<span class="ob-arrow">▼</span></div>
+    <div class="ob-hint">拍一张<br>背景<span class="ob-arrow">▼</span></div>
+    <div class="ob-hint">添加<br>取景框<span class="ob-arrow">▼</span></div>
   </div>
 </div>
 
@@ -1254,15 +1261,17 @@ $('#overlay-close').onclick = () => { $('#overlay').style.display = 'none'; };
 applyMirror();
 ensureCamera();
 
-/* 首次使用引导（每个浏览器只弹一次） */
+/* 首次使用引导（每个浏览器只弹一次）：半透明盖在首屏上，点任意位置开始 */
 try {
   if (!localStorage.getItem('pip_onboarded_v1')) {
     $('#onboard').style.display = 'flex';
+    $('#home-tip').style.visibility = 'hidden'; // 避免与引导提示文字重叠
   }
 } catch (_) { /* 隐私模式等场景下静默跳过 */ }
-$('#ob-start').onclick = () => {
+$('#onboard').onclick = () => {
   try { localStorage.setItem('pip_onboarded_v1', '1'); } catch (_) {}
   $('#onboard').style.display = 'none';
+  $('#home-tip').style.visibility = '';
 };
 
 /* 禁止长按弹系统菜单（安卓 Chrome 走 contextmenu）；拍立得文字与导出结果图除外 */
