@@ -761,10 +761,11 @@ async function ensureCamera() {
   }
 }
 
-// 相机轨道可能被系统回收（切 App/电话后 readyState=ended）：检查活性，死了重新取流
+// 相机轨道可能被系统回收：切后台后 readyState=ended 或被静音(muted，画面全黑)
+// 两种都只能重新 getUserMedia
 async function ensureCameraAlive() {
   const track = state.stream && state.stream.getVideoTracks()[0];
-  if (state.stream && (!track || track.readyState === 'ended')) {
+  if (state.stream && (!track || track.readyState === 'ended' || track.muted)) {
     state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
   }
@@ -778,13 +779,19 @@ function resumeCamBg() {
   });
 }
 
-// 从后台切回页面时统一恢复
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) return;
+// 切回页面时统一恢复相机（覆盖 visibilitychange 与 bfcache 两条路径）
+function recoverCamera() {
   ensureCameraAlive().then(() => {
+    if (!state.stream) return;
     if ($('#home').style.display !== 'none') resumeCamBg();
     else syncVideo(); // 编辑页：恢复取景框内画面
   });
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) recoverCamera();
+});
+window.addEventListener('pageshow', e => {
+  if (e.persisted) recoverCamera();
 });
 
 function applyMirror() {
