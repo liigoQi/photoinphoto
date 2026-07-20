@@ -267,12 +267,13 @@
   }
   #overlay img { max-width: 100%; max-height: 72%; border-radius: 8px; }
   #overlay .tip { color: #8e8e93; font-size: 13px; }
-  #overlay .row { display: flex; gap: 12px; }
+  #overlay .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   #overlay .row a, #overlay .row button {
     background: #2c2c2e; color: #eee; border: none; border-radius: 12px;
     padding: 12px 22px; font-size: 15px; text-decoration: none;
   }
   #overlay .row a { background: #0a84ff; }
+  #overlay .row #overlay-again { background: #fc3158; }
 
   #cam { display: none; }
 
@@ -440,6 +441,7 @@
   <div class="tip">iPhone 可长按图片存储到照片</div>
   <div class="row">
     <a id="overlay-dl" download="photoinphoto.jpg">下载图片</a>
+    <button id="overlay-again">再拍一张</button>
     <button id="overlay-close">返回继续编辑</button>
   </div>
 </div>
@@ -518,8 +520,7 @@ function enterEditor() {
 }
 
 /* ---------------- 清空重做 ---------------- */
-$('#edit-reset').onclick = () => {
-  if (!confirm('清空当前作品，重新做一张？')) return;
+function resetAll() {
   if (state.drawing) exitDrawMode();
   state.frames.forEach(f => f.el.remove());
   state.frames = [];
@@ -535,7 +536,11 @@ $('#edit-reset').onclick = () => {
   $('#editor').style.display = 'none';
   $('#home').style.display = 'block';
   ensureCamera().then(() => camBg.play().catch(() => {}));
+}
+$('#edit-reset').onclick = () => {
+  if (confirm('清空当前作品，重新做一张？')) resetAll();
 };
+$('#overlay-again').onclick = () => resetAll();
 
 function flashOnce() {
   const fl = $('#flash');
