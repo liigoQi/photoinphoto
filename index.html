@@ -150,9 +150,26 @@
   }
   #ab-left { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
   #ab-hint { color: #8e8e93; font-size: 12px; line-height: 1.4; }
-  #ab-feather { display: none; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-  #ab-feather label { font-size: 12px; color: #8e8e93; white-space: nowrap; }
-  #ab-feather input { flex: 1; min-width: 0; accent-color: #0a84ff; }
+  /* 调节滑杆：与整体一致的极简风 */
+  .sliders { display: none; flex: 1; min-width: 0; flex-direction: column; gap: 6px; }
+  .srow { display: flex; align-items: center; gap: 10px; }
+  .srow label { flex: 0 0 auto; font-size: 11px; color: #636366; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    flex: 1; min-width: 0; height: 24px; background: transparent; margin: 0;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 1.5px; background: #3a3a3c;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; margin-top: -6.5px; box-shadow: 0 1px 4px rgba(0,0,0,.45);
+  }
+  input[type="range"]::-moz-range-track { height: 3px; border-radius: 1.5px; background: #3a3a3c; }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border: none; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45);
+  }
   #ab-shutter {
     flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
     background: #fff; border: 4px solid #8e8e93; display: none;
@@ -267,6 +284,30 @@
   .dbtn.primary { background: #0a84ff; font-weight: 600; }
   .dbtn.on { background: #0a84ff; }
   .pv svg { position: absolute; inset: 0; margin: auto; width: 34px; height: 34px; }
+
+  /* ---------- 首次使用引导 ---------- */
+  #onboard {
+    position: fixed; inset: 0; background: #111; z-index: 80;
+    display: none; align-items: center; justify-content: center; padding: 32px;
+  }
+  .ob-card { width: 100%; max-width: 360px; }
+  .ob-title { font-size: 34px; font-weight: 700; text-align: center; letter-spacing: 4px; }
+  .ob-sub { color: #8e8e93; text-align: center; font-size: 14px; margin: 10px 0 32px; }
+  .ob-row {
+    display: flex; gap: 14px; align-items: center; margin-bottom: 18px;
+    font-size: 14px; line-height: 1.55; color: #d1d1d6;
+  }
+  .ob-row b { color: #fff; font-weight: 600; }
+  .ob-ic {
+    flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;
+    background: #2c2c2e; display: flex; align-items: center; justify-content: center;
+  }
+  .ob-ic svg { width: 20px; height: 20px; }
+  #ob-start {
+    width: 100%; margin-top: 16px; background: #fc3158; color: #fff; border: none;
+    border-radius: 24px; padding: 14px; font-size: 17px; font-weight: 600;
+  }
+  #ob-start:active { transform: scale(.97); }
 </style>
 </head>
 <body>
@@ -286,9 +327,15 @@
       <div id="ab-normal">
         <div id="ab-left">
           <div id="ab-hint">点右下角按钮<br>添加取景框</div>
-          <div id="ab-feather">
-            <label>边缘发散</label>
-            <input type="range" id="feather-range" min="0" max="16" step="1" value="6">
+          <div id="ab-sliders" class="sliders">
+            <div class="srow" id="sr-feather">
+              <label>发散</label>
+              <input type="range" id="feather-range" min="0" max="16" step="1" value="6">
+            </div>
+            <div class="srow" id="sr-radius">
+              <label>圆角</label>
+              <input type="range" id="radius-range" min="0" max="50" step="1" value="14">
+            </div>
           </div>
         </div>
         <button id="ab-shutter" aria-label="快门"></button>
@@ -348,6 +395,27 @@
   <div class="grabber"></div>
   <div class="sheet-head"><span>选择取景框</span><button id="sheet-close">✕</button></div>
   <div id="sheet-row"></div>
+</div>
+
+<!-- 首次使用引导 -->
+<div id="onboard">
+  <div class="ob-card">
+    <div class="ob-title">相中相</div>
+    <div class="ob-sub">在照片里套取景框，框里再拍一个世界</div>
+    <div class="ob-row">
+      <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5" fill="#fff" stroke="none"/><path d="M4.5 17.5l4.5-3.8 3.5 3 3-2.4 4 3.2"/></svg></span>
+      <span>按快门把眼前画面定格为背景，或点<b>左下角</b>从相册选一张</span>
+    </div>
+    <div class="ob-row">
+      <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M4 8.5V6a2 2 0 012-2h2.5M15.5 4H18a2 2 0 012 2v2.5M20 15.5V18a2 2 0 01-2 2h-2.5M8.5 20H6a2 2 0 01-2-2v-2.5"/><circle cx="12" cy="12" r="3.2"/></svg></span>
+      <span>点<b>右下角</b>添加取景框：形状、拍立得、传送门，或用画笔随手圈一块</span>
+    </div>
+    <div class="ob-row">
+      <span class="ob-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/></svg></span>
+      <span>框里就是镜头，对准按快门；拖动移动，双指旋转缩放，边缘白点拉宽拉高</span>
+    </div>
+    <button id="ob-start">开始玩</button>
+  </div>
 </div>
 
 <video id="cam" playsinline autoplay muted></video>
@@ -474,8 +542,8 @@ window.addEventListener('resize', fitStage);
 /* ---------------- 形状蒙版（羽化边缘） ---------------- */
 // 用 canvas 阴影模拟高斯模糊，生成带柔边的形状蒙版；预览(CSS mask)与导出共用，保证一致
 const maskCache = new Map();
-function buildMaskCanvas(type, feather) {
-  const key = type + '_' + feather;
+function buildMaskCanvas(type, feather, radius) {
+  const key = `${type}_${feather}_${type === 'rrect' ? (radius ?? 14) : ''}`;
   if (maskCache.has(key)) return maskCache.get(key);
   const S = 256, c = document.createElement('canvas');
   c.width = c.height = S;
@@ -489,7 +557,7 @@ function buildMaskCanvas(type, feather) {
   if (type === 'circle') {
     x.arc(S / 2, S / 2, box / 2, 0, Math.PI * 2);
   } else if (type === 'rrect') {
-    roundRectPath(x, m, m, box, box, box * 0.14);
+    roundRectPath(x, m, m, box, box, box * ((radius ?? 14) / 100));
   } else if (type === 'heart') {
     heartPath(x, m, m, box);
   }
@@ -526,7 +594,7 @@ function createFrame(type, cx, cy) {
     cx: clamp(cx, 0.08, 0.92), cy: clamp(cy, 0.08, 0.92),
     w: t.size, h: t.size / t.ar,
     rot: type === 'polaroid' ? (Math.random() * 10 - 5) : 0,
-    feather: 6, captured: null, caption: '',
+    feather: 6, radius: 14, captured: null, caption: '',
   };
   state.frames.push(f);
   buildFrameEl(f);
@@ -627,9 +695,13 @@ function syncActionBar() {
   $('#ab-flip').style.display = f && !f.captured ? 'flex' : 'none';
   $('#ab-retake').style.display = f && f.captured ? 'flex' : 'none';
   $('#ab-del').style.display = f ? 'flex' : 'none';
-  $('#ab-feather').style.display = isShape ? 'flex' : 'none';
+  $('#ab-sliders').style.display = isShape ? 'flex' : 'none';
   $('#ab-hint').style.display = isShape ? 'none' : 'block';
-  if (isShape) $('#feather-range').value = f.feather;
+  if (isShape) {
+    $('#feather-range').value = f.feather;
+    $('#sr-radius').style.display = f.type === 'rrect' ? 'flex' : 'none';
+    $('#radius-range').value = f.radius;
+  }
   if (!f) $('#ab-hint').innerHTML = '点右下角按钮<br>添加取景框';
   else if (f.captured) $('#ab-hint').textContent = '拖动移动 · 双指旋转缩放 · 拖白色手柄拉宽拉长';
   else $('#ab-hint').textContent = TYPES[f.type].kind === 'portal' ? '对准另一个世界，按快门' : '对准后按快门';
@@ -639,6 +711,12 @@ $('#feather-range').addEventListener('input', e => {
   const f = selectedFrame();
   if (!f || TYPES[f.type].kind !== 'shape') return;
   f.feather = +e.target.value;
+  updateMask(f);
+});
+$('#radius-range').addEventListener('input', e => {
+  const f = selectedFrame();
+  if (!f || f.type !== 'rrect') return;
+  f.radius = +e.target.value;
   updateMask(f);
 });
 
@@ -1132,7 +1210,7 @@ async function drawFrameExport(x, f, sx, W, H) {
     o.drawImage(
       kind === 'portal' ? buildMaskCanvas('circle', 2)
       : kind === 'draw' ? f.customMask
-      : buildMaskCanvas(f.type, f.feather),
+      : buildMaskCanvas(f.type, f.feather, f.radius),
       0, 0, w, h);
     o.globalCompositeOperation = 'source-over';
     if (kind === 'portal') {
@@ -1175,6 +1253,17 @@ $('#overlay-close').onclick = () => { $('#overlay').style.display = 'none'; };
 /* ---------------- 启动：首屏直接开相机 ---------------- */
 applyMirror();
 ensureCamera();
+
+/* 首次使用引导（每个浏览器只弹一次） */
+try {
+  if (!localStorage.getItem('pip_onboarded_v1')) {
+    $('#onboard').style.display = 'flex';
+  }
+} catch (_) { /* 隐私模式等场景下静默跳过 */ }
+$('#ob-start').onclick = () => {
+  try { localStorage.setItem('pip_onboarded_v1', '1'); } catch (_) {}
+  $('#onboard').style.display = 'none';
+};
 
 /* 禁止长按弹系统菜单（安卓 Chrome 走 contextmenu）；拍立得文字与导出结果图除外 */
 document.addEventListener('contextmenu', e => {
