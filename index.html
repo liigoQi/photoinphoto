@@ -749,7 +749,7 @@ async function ensureCamera() {
   if (state.stream) return;
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: state.facing, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      video: { facingMode: state.facing, width: { ideal: 1920 }, height: { ideal: 1440 } }, // 4:3，与系统相机/相册默认比例一致
       audio: false,
     });
     video.srcObject = state.stream;
@@ -798,7 +798,7 @@ async function flipCamera() {
   try {
     // 先拿新流再停旧流：全程存在活动流，iOS 不会重复弹授权
     const newStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: next, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      video: { facingMode: next, width: { ideal: 1920 }, height: { ideal: 1440 } }, // 4:3
       audio: false,
     });
     if (state.stream) state.stream.getTracks().forEach(t => t.stop());
