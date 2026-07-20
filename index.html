@@ -671,7 +671,7 @@ function updateMask(f) {
     return;
   }
   if (kind !== 'shape') return;
-  const url = `url(${buildMaskCanvas(f.type, f.feather).toDataURL()})`;
+  const url = `url(${buildMaskCanvas(f.type, f.feather, f.radius).toDataURL()})`;
   f.viewport.style.webkitMaskImage = url;
   f.viewport.style.maskImage = url;
 }
