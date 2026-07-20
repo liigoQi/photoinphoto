@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>趣味取景框</title>
+<style>
+  * {
+    box-sizing: border-box; -webkit-tap-highlight-color: transparent;
+    /* 全局禁止选中/长按弹菜单，防止误触；例外在下面单独放开 */
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* 拍立得文字编辑需要选中能力 */
+  .caption { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+  /* 导出结果图保留长按保存 */
+  #overlay img { -webkit-touch-callout: default; }
+  html, body {
+    height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none;
+    background: #111; color: #eee;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+    /* iOS10+ 忽略 user-scalable=no，用 manipulation 禁用双击缩放 */
+    touch-action: manipulation;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; }
+  #editor { display: flex; flex-direction: column; height: 100%; }
+
+  /* ---------- 舞台 ---------- */
+  #stage-wrap {
+    flex: 1; position: relative; display: flex;
+    align-items: center; justify-content: center;
+    overflow: hidden; touch-action: none; min-height: 0;
+  }
+  #stage { position: relative; line-height: 0; touch-action: none; }
+  #base-img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+  img, video { -webkit-user-drag: none; }
+  #edit-reset {
+    position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; z-index: 8;
+    width: 40px; height: 40px;
+  }
+  #edit-reset svg { width: 20px; height: 20px; }
+
+  /* ---------- 首屏：拍背景（可立拍式） ---------- */
+  #home { position: fixed; inset: 0; background: #000; z-index: 30; }
+  #cam-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #cam-bg.mirror { transform: scaleX(-1); }
+  #home-bar {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 44px calc(26px + env(safe-area-inset-bottom));
+  }
+  #home-flip {
+    position: absolute; right: 26px; bottom: calc(128px + env(safe-area-inset-bottom));
+    width: 42px; height: 42px; border-radius: 50%; border: none;
+    background: rgba(45,45,47,.75);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #home-flip svg { width: 20px; height: 20px; }
+  .hbtn {
+    width: 46px; height: 46px; border-radius: 50%; border: none;
+    background: rgba(45,45,47,.75); display: flex; align-items: center; justify-content: center;
+  }
+  .hbtn svg { width: 24px; height: 24px; }
+  #home-shutter {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: #fff; border: 5px solid rgba(255,255,255,.35); background-clip: padding-box;
+  }
+  #home-shutter:active { transform: scale(.93); }
+  #home-tip {
+    position: absolute; left: 0; right: 0; bottom: calc(120px + env(safe-area-inset-bottom));
+    text-align: center; color: rgba(255,255,255,.75); font-size: 13px; pointer-events: none;
+  }
+
+  /* ---------- 取景框 ---------- */
+  .frame {
+    position: absolute; transform: translate(-50%, -50%);
+    touch-action: none; z-index: 2; container-type: inline-size;
+  }
+  .frame.selected { z-index: 3; }
+  .frame .fx { position: absolute; inset: 0; }
+  .frame.selected .fx { outline: 2px dashed rgba(255,255,255,.85); outline-offset: 5px; }
+  /* 拉伸手柄：右=拉宽，下=拉高，右下=同时 */
+  .ff-handle {
+    position: absolute; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.55);
+    display: none; z-index: 5; touch-action: none;
+  }
+  .frame.selected .ff-handle { display: block; }
+  .h-e  { right: -6px; top: 50%; transform: translateY(-50%); width: 10px; height: 38px; border-radius: 5px; }
+  .h-s  { bottom: -6px; left: 50%; transform: translateX(-50%); width: 38px; height: 10px; border-radius: 5px; }
+  .h-se { right: -9px; bottom: -9px; width: 22px; height: 22px; border-radius: 50%; }
+  .h-se::after {
+    content: ''; position: absolute; right: 5px; bottom: 5px; width: 8px; height: 8px;
+    border-right: 2.5px solid #999; border-bottom: 2.5px solid #999; border-radius: 1px;
+  }
+  .viewport {
+    position: absolute; inset: 0; overflow: hidden; background: #1c1c1e;
+    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  }
+  .viewport video, .viewport img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  }
+  .viewport video.mirror { transform: scaleX(-1); }
+  .placeholder {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2px;
+    color: #8e8e93; background: #1c1c1e;
+  }
+  .placeholder .ic { font-size: 18cqi; }
+  .placeholder span { font-size: 8cqi; line-height: 1; }
+
+  /* 拍立得 */
+  .frame.polaroid .fx {
+    background: #fdfdf8; padding: 5% 5% 0;
+    box-shadow: 0 6px 18px rgba(0,0,0,.45);
+    display: flex; flex-direction: column;
+  }
+  .frame.polaroid .viewport { position: relative; inset: auto; flex: 0 0 auto; aspect-ratio: 1; }
+  .frame.polaroid .caption {
+    flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+    color: #3a3a3a; font-family: "Bradley Hand", "Segoe Print", "PingFang SC", cursive;
+    font-size: 9cqi; text-align: center; outline: none; overflow: hidden;
+    line-height: 1; padding: 0 4%;
+  }
+  .frame.polaroid .caption:empty::before { content: "写点什么…"; color: #b9b9b0; }
+
+  /* 传送门 */
+  .frame.portal .ring {
+    position: absolute; inset: -7%; border-radius: 50%; z-index: 0;
+    background: conic-gradient(from 0deg, #59ff7c, #c8ff5e, #2fe87a, #9dff3f, #59ff7c);
+    filter: blur(8px);
+    animation: spin 3.5s linear infinite;
+  }
+  .frame.portal .viewport {
+    border-radius: 50%; z-index: 1;
+    box-shadow: 0 0 0 3px rgba(160,255,120,.9), 0 0 24px 6px rgba(120,255,90,.75);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- 操作栏 ---------- */
+  #actionbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; background: #161616; border-top: 1px solid #2c2c2e;
+    min-height: 66px;
+  }
+  #ab-left { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+  #ab-hint { color: #8e8e93; font-size: 12px; line-height: 1.4; }
+  #ab-feather { display: none; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  #ab-feather label { font-size: 12px; color: #8e8e93; white-space: nowrap; }
+  #ab-feather input { flex: 1; min-width: 0; accent-color: #0a84ff; }
+  #ab-shutter {
+    flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
+    background: #fff; border: 4px solid #8e8e93; display: none;
+  }
+  #ab-shutter:active { transform: scale(.92); }
+  .abtn {
+    flex: 0 0 auto; background: #2c2c2e; border: none; color: #eee;
+    border-radius: 10px; padding: 10px 12px; font-size: 17px; display: none;
+    align-items: center; justify-content: center;
+  }
+  .abtn svg { width: 20px; height: 20px; }
+
+  /* ---------- 编辑页底栏（可立拍式三键） ---------- */
+  #edit-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 34px calc(14px + env(safe-area-inset-bottom));
+    background: #1b1b1d; border-top: 1px solid #2c2c2e;
+  }
+  #edit-export {
+    background: #fc3158; color: #fff; border: none; border-radius: 24px;
+    padding: 13px 52px; font-size: 16px; font-weight: 600;
+  }
+  #edit-export:active { transform: scale(.95); }
+
+  /* ---------- 取景框弹层 ---------- */
+  #sheet-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 55;
+    opacity: 0; pointer-events: none; transition: opacity .28s;
+  }
+  #sheet-mask.open { opacity: 1; pointer-events: auto; }
+  #sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    background: #1c1c1e; border-radius: 18px 18px 0 0;
+    padding: 6px 18px calc(20px + env(safe-area-inset-bottom));
+    transform: translateY(105%); transition: transform .3s ease;
+  }
+  #sheet.open { transform: translateY(0); }
+  #sheet .grabber { width: 38px; height: 4px; border-radius: 2px; background: #48484a; margin: 6px auto 12px; }
+  #sheet .sheet-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 16px; font-weight: 600; margin-bottom: 16px;
+  }
+  #sheet-close {
+    background: #2c2c2e; border: none; color: #eee;
+    width: 30px; height: 30px; border-radius: 50%; font-size: 13px;
+  }
+  #sheet-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+  .card {
+    flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: #2c2c2e; border: none; color: #eee; border-radius: 16px;
+    padding: 16px 18px 12px; font-size: 12px; user-select: none;
+  }
+  .card:active { background: #3a3a3c; }
+  .card .pv { width: 62px; height: 62px; display: block; position: relative; pointer-events: none; }
+  .card span { pointer-events: none; }
+  /* 框体实物预览（与真实框同款渲染） */
+  .pv .ph {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #7dd3fc, #c084fc 55%, #fde68a);
+    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  }
+  .pv-polaroid {
+    position: absolute; inset: 0 2px; background: #fdfdf8; border-radius: 2px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.55);
+    display: flex; flex-direction: column; padding: 6% 6% 0;
+  }
+  .pv-polaroid .po {
+    flex: 0 0 auto; aspect-ratio: 1;
+    background: linear-gradient(135deg, #7dd3fc, #c084fc 55%, #fde68a);
+  }
+  .pv-polaroid .pc { flex: 1; }
+  .pv-portal {
+    position: absolute; inset: 4%; border-radius: 50%;
+    background: linear-gradient(135deg, #7dd3fc, #c084fc 60%, #fde68a);
+    box-shadow: 0 0 0 3px rgba(160,255,120,.95), 0 0 12px 4px rgba(120,255,90,.8);
+  }
+
+  /* ---------- 闪光灯 & 导出浮层 ---------- */
+  #flash {
+    position: fixed; inset: 0; background: #fff; opacity: 0;
+    pointer-events: none; transition: opacity .4s; z-index: 40;
+  }
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.93); z-index: 50;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 20px;
+  }
+  #overlay img { max-width: 100%; max-height: 72%; border-radius: 8px; }
+  #overlay .tip { color: #8e8e93; font-size: 13px; }
+  #overlay .row { display: flex; gap: 12px; }
+  #overlay .row a, #overlay .row button {
+    background: #2c2c2e; color: #eee; border: none; border-radius: 12px;
+    padding: 12px 22px; font-size: 15px; text-decoration: none;
+  }
+  #overlay .row a { background: #0a84ff; }
+
+  #cam { display: none; }
+
+  /* ---------- 画笔绘制模式 ---------- */
+  #draw-canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 10; touch-action: none; display: none;
+  }
+  #ab-normal { display: flex; align-items: center; gap: 12px; width: 100%; }
+  #ab-draw { display: none; align-items: center; gap: 8px; width: 100%; }
+  #ab-draw .sp { flex: 1; }
+  .dbtn {
+    background: #2c2c2e; border: none; color: #eee; border-radius: 10px;
+    padding: 10px 13px; font-size: 14px;
+  }
+  .dbtn.primary { background: #0a84ff; font-weight: 600; }
+  .dbtn.on { background: #0a84ff; }
+  .pv svg { position: absolute; inset: 0; margin: auto; width: 34px; height: 34px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="editor" style="display:none">
+    <div id="stage-wrap">
+      <div id="stage">
+        <img id="base-img" alt="">
+        <canvas id="draw-canvas"></canvas>
+      </div>
+      <button id="edit-reset" class="hbtn" title="清空重做">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9.5 9.5 0 00-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg>
+      </button>
+    </div>
+
+    <div id="actionbar">
+      <div id="ab-normal">
+        <div id="ab-left">
+          <div id="ab-hint">点右下角按钮<br>添加取景框</div>
+          <div id="ab-feather">
+            <label>边缘发散</label>
+            <input type="range" id="feather-range" min="0" max="16" step="1" value="6">
+          </div>
+        </div>
+        <button id="ab-shutter" aria-label="快门"></button>
+        <button class="abtn" id="ab-flip" title="切换前后摄像头">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H9a4 4 0 00-4 4v1"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h11a4 4 0 004-4v-1"/></svg>
+        </button>
+        <button class="abtn" id="ab-retake" title="重拍">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
+        </button>
+        <button class="abtn" id="ab-del" title="删除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2"/><path d="M6.5 7l1 12a2 2 0 002 1.8h5a2 2 0 002-1.8l1-12"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+      <div id="ab-draw">
+        <button class="dbtn" id="draw-erase">橡皮</button>
+        <button class="dbtn" id="draw-undo">撤销</button>
+        <button class="dbtn" id="draw-clear">清除</button>
+        <span class="sp"></span>
+        <button class="dbtn" id="draw-cancel">取消</button>
+        <button class="dbtn primary" id="draw-done">生成取景框</button>
+      </div>
+    </div>
+
+    <div id="edit-bar">
+      <button id="edit-album" class="hbtn" title="从相册选背景">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5" fill="#fff" stroke="none"/><path d="M4.5 17.5l4.5-3.8 3.5 3 3-2.4 4 3.2"/></svg>
+      </button>
+      <button id="edit-export">保存</button>
+      <button id="edit-frames" class="hbtn" title="添加取景框">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M4 8.5V6a2 2 0 012-2h2.5M15.5 4H18a2 2 0 012 2v2.5M20 15.5V18a2 2 0 01-2 2h-2.5M8.5 20H6a2 2 0 01-2-2v-2.5"/><circle cx="12" cy="12" r="3.2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- 首屏：拍背景 -->
+<div id="home">
+  <video id="cam-bg" playsinline autoplay muted></video>
+  <div id="home-tip">按快门拍一张背景，或从相册选一张</div>
+  <button id="home-flip" title="切换前后摄像头">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H9a4 4 0 00-4 4v1"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h11a4 4 0 004-4v-1"/></svg>
+  </button>
+  <div id="home-bar">
+    <button id="home-album" class="hbtn" title="从相册选背景">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5"/><circle cx="8.6" cy="10" r="1.5" fill="#fff" stroke="none"/><path d="M4.5 17.5l4.5-3.8 3.5 3 3-2.4 4 3.2"/></svg>
+    </button>
+    <button id="home-shutter" aria-label="拍摄背景"></button>
+    <button id="home-frames" class="hbtn" title="选择取景框">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M4 8.5V6a2 2 0 012-2h2.5M15.5 4H18a2 2 0 012 2v2.5M20 15.5V18a2 2 0 01-2 2h-2.5M8.5 20H6a2 2 0 01-2-2v-2.5"/><circle cx="12" cy="12" r="3.2"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- 取景框弹层 -->
+<div id="sheet-mask"></div>
+<div id="sheet">
+  <div class="grabber"></div>
+  <div class="sheet-head"><span>选择取景框</span><button id="sheet-close">✕</button></div>
+  <div id="sheet-row"></div>
+</div>
+
+<video id="cam" playsinline autoplay muted></video>
+<input type="file" id="file-input" accept="image/*" hidden>
+<div id="flash"></div>
+<div id="overlay">
+  <img id="overlay-img" alt="合成结果">
+  <div class="tip">iPhone 可长按图片存储到照片</div>
+  <div class="row">
+    <a id="overlay-dl" download="fun-frames.jpg">下载图片</a>
+    <button id="overlay-close">返回继续编辑</button>
+  </div>
+</div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const stageWrap = $('#stage-wrap'), stage = $('#stage'), baseImg = $('#base-img');
+const video = $('#cam'), camBg = $('#cam-bg'), fileInput = $('#file-input');
+
+/* ---------------- 配置与状态 ---------------- */
+// kind: shape(形状+羽化) / polaroid(拍立得) / portal(传送门)
+// ar = 宽/高
+const TYPES = {
+  circle:   { label: '圆形',   kind: 'shape',    ar: 1,     size: 0.34 },
+  rrect:    { label: '矩形',   kind: 'shape',    ar: 0.78,  size: 0.38 },
+  heart:    { label: '心形',   kind: 'shape',    ar: 1,     size: 0.36 },
+  polaroid: { label: '拍立得', kind: 'polaroid', ar: 0.855, size: 0.46 },
+  portal:   { label: '传送门', kind: 'portal',   ar: 1,     size: 0.38 },
+  draw:     { label: '画笔',   kind: 'draw',     ar: 1,     size: 0.4  },
+};
+const state = {
+  frames: [],        // {id,type,cx,cy(相对舞台比例),w,h,rot,feather,captured,caption,el,viewport,customMask?}
+  selectedId: null,
+  facing: 'user',    // user=前置(自拍) environment=后置
+  stream: null,
+  imgNat: null,      // {w,h} 底图原始尺寸
+  drawing: false,    // 画笔绘制模式
+};
+let seq = 0;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ---------------- 底图：相册选择 / 相机拍摄 ---------------- */
+$('#home-album').onclick = () => fileInput.click();
+$('#edit-album').onclick = () => fileInput.click();
+fileInput.onchange = () => { if (fileInput.files[0]) loadImage(fileInput.files[0]); fileInput.value = ''; };
+
+let pendingFrameType = null; // 无背景时从弹层选框：先自动拍背景，进编辑页后补建框
+
+function loadImage(file) { setBaseImage(URL.createObjectURL(file)); }
+
+function setBaseImage(src) {
+  baseImg.onload = () => {
+    state.imgNat = { w: baseImg.naturalWidth, h: baseImg.naturalHeight };
+    enterEditor();
+    if (pendingFrameType) {
+      const t = pendingFrameType;
+      pendingFrameType = null;
+      if (t === 'draw') enterDrawMode(); else createFrame(t, 0.5, 0.5);
+    }
+  };
+  baseImg.src = src;
+}
+
+// 首屏快门：把当前相机画面定格为背景
+function captureBackground() {
+  if (!state.stream || !camBg.videoWidth) { alert('摄像头还没准备好，稍等一下'); return false; }
+  const vw = camBg.videoWidth, vh = camBg.videoHeight;
+  const c = document.createElement('canvas');
+  c.width = vw; c.height = vh;
+  const x = c.getContext('2d');
+  if (state.facing === 'user') { x.translate(vw, 0); x.scale(-1, 1); }
+  x.drawImage(camBg, 0, 0);
+  setBaseImage(c.toDataURL('image/jpeg', 0.92));
+  flashOnce();
+  if (navigator.vibrate) navigator.vibrate(15);
+  return true;
+}
+$('#home-shutter').onclick = () => captureBackground();
+
+function enterEditor() {
+  $('#home').style.display = 'none';
+  $('#editor').style.display = 'flex';
+  camBg.pause();
+  fitStage();
+  syncActionBar();
+}
+
+/* ---------------- 清空重做 ---------------- */
+$('#edit-reset').onclick = () => {
+  if (!confirm('清空当前作品，重新做一张？')) return;
+  if (state.drawing) exitDrawMode();
+  state.frames.forEach(f => f.el.remove());
+  state.frames = [];
+  state.selectedId = null;
+  state.imgNat = null;
+  pendingFrameType = null;
+  baseImg.removeAttribute('src');
+  video.style.display = 'none';
+  if (video.parentNode) video.remove();
+  $('#overlay').style.display = 'none';
+  closeSheet();
+  // 回到首屏相机
+  $('#editor').style.display = 'none';
+  $('#home').style.display = 'block';
+  ensureCamera().then(() => camBg.play().catch(() => {}));
+};
+
+function flashOnce() {
+  const fl = $('#flash');
+  fl.style.transition = 'none'; fl.style.opacity = '0.85';
+  requestAnimationFrame(() => { fl.style.transition = 'opacity .4s'; fl.style.opacity = '0'; });
+}
+
+function fitStage() {
+  if (!state.imgNat) return;
+  const ww = stageWrap.clientWidth, wh = stageWrap.clientHeight;
+  const s = Math.min(ww / state.imgNat.w, wh / state.imgNat.h);
+  stage.style.width = Math.round(state.imgNat.w * s) + 'px';
+  stage.style.height = Math.round(state.imgNat.h * s) + 'px';
+  state.frames.forEach(renderFrame); // 舞台尺寸变化后重算高度百分比
+}
+window.addEventListener('resize', fitStage);
+
+/* ---------------- 形状蒙版（羽化边缘） ---------------- */
+// 用 canvas 阴影模拟高斯模糊，生成带柔边的形状蒙版；预览(CSS mask)与导出共用，保证一致
+const maskCache = new Map();
+function buildMaskCanvas(type, feather) {
+  const key = type + '_' + feather;
+  if (maskCache.has(key)) return maskCache.get(key);
+  const S = 256, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x = c.getContext('2d');
+  const m = 6 + feather * 2.4;        // 形状内缩，给羽化留边
+  const box = S - 2 * m;
+  x.fillStyle = '#fff';
+  x.shadowColor = '#fff';
+  x.shadowBlur = feather * 3.2;
+  x.beginPath();
+  if (type === 'circle') {
+    x.arc(S / 2, S / 2, box / 2, 0, Math.PI * 2);
+  } else if (type === 'rrect') {
+    roundRectPath(x, m, m, box, box, box * 0.14);
+  } else if (type === 'heart') {
+    heartPath(x, m, m, box);
+  }
+  x.fill();
+  maskCache.set(key, c);
+  return c;
+}
+function roundRectPath(x, px, py, w, h, r) {
+  x.moveTo(px + r, py);
+  x.arcTo(px + w, py, px + w, py + h, r);
+  x.arcTo(px + w, py + h, px, py + h, r);
+  x.arcTo(px, py + h, px, py, r);
+  x.arcTo(px, py, px + w, py, r);
+  x.closePath();
+}
+function heartPath(x, px, py, s) {
+  const u = s / 100;
+  x.moveTo(px + 50 * u, py + 34 * u);
+  x.bezierCurveTo(px + 47 * u, py + 24 * u, px + 38 * u, py + 16 * u, px + 28 * u, py + 16 * u);
+  x.bezierCurveTo(px + 16 * u, py + 16 * u, px + 8 * u, py + 26 * u, px + 8 * u, py + 38 * u);
+  x.bezierCurveTo(px + 8 * u, py + 52 * u, px + 24 * u, py + 64 * u, px + 50 * u, py + 86 * u);
+  x.bezierCurveTo(px + 76 * u, py + 64 * u, px + 92 * u, py + 52 * u, px + 92 * u, py + 38 * u);
+  x.bezierCurveTo(px + 92 * u, py + 26 * u, px + 84 * u, py + 16 * u, px + 72 * u, py + 16 * u);
+  x.bezierCurveTo(px + 62 * u, py + 16 * u, px + 53 * u, py + 24 * u, px + 50 * u, py + 34 * u);
+  x.closePath();
+}
+
+/* ---------------- 取景框 ---------------- */
+// 尺寸模型：f.w / f.h 均为相对舞台宽度的比例，可独立调整（拉宽/拉长）
+function createFrame(type, cx, cy) {
+  const t = TYPES[type];
+  const f = {
+    id: 'f' + (++seq), type,
+    cx: clamp(cx, 0.08, 0.92), cy: clamp(cy, 0.08, 0.92),
+    w: t.size, h: t.size / t.ar,
+    rot: type === 'polaroid' ? (Math.random() * 10 - 5) : 0,
+    feather: 6, captured: null, caption: '',
+  };
+  state.frames.push(f);
+  buildFrameEl(f);
+  select(f.id);
+  ensureCamera();
+  return f;
+}
+
+function buildFrameEl(f) {
+  const t = TYPES[f.type];
+  const el = document.createElement('div');
+  el.className = 'frame ' + f.type;
+  const fx = document.createElement('div');
+  fx.className = 'fx';
+  if (t.kind === 'portal') {
+    const ring = document.createElement('div');
+    ring.className = 'ring';
+    fx.appendChild(ring);
+  }
+  const vp = document.createElement('div');
+  vp.className = 'viewport';
+  const ph = document.createElement('div');
+  ph.className = 'placeholder';
+  ph.innerHTML = '<span class="ic">📷</span><span>轻点取景</span>';
+  vp.appendChild(ph);
+  fx.appendChild(vp);
+  if (t.kind === 'polaroid') {
+    const cap = document.createElement('div');
+    cap.className = 'caption';
+    cap.contentEditable = 'true';
+    cap.spellcheck = false;
+    cap.addEventListener('pointerdown', e => e.stopPropagation());
+    cap.addEventListener('input', () => { f.caption = cap.textContent.trim(); });
+    fx.appendChild(cap);
+    f.captionEl = cap;
+  }
+  // 拉伸手柄：右=拉宽，下=拉高，右下=同时（仅选中时可见，跟随框旋转）
+  ['e', 's', 'se'].forEach(dir => {
+    const h = document.createElement('div');
+    h.className = 'ff-handle h-' + dir;
+    h.dataset.dir = dir;
+    fx.appendChild(h);
+  });
+  el.appendChild(fx);
+  stage.appendChild(el);
+  f.el = el; f.viewport = vp; f.placeholder = ph;
+  updateMask(f);
+  renderFrame(f);
+}
+
+function renderFrame(f) {
+  f.el.style.left = (f.cx * 100) + '%';
+  f.el.style.top = (f.cy * 100) + '%';
+  // 高度按舞台宽高比换算成百分比（f.h 是相对舞台宽度的比例）
+  const ratio = stage.clientWidth / stage.clientHeight || 1;
+  f.el.style.width = (f.w * 100) + '%';
+  f.el.style.height = (f.h * ratio * 100) + '%';
+  f.el.style.transform = `translate(-50%,-50%) rotate(${f.rot}deg)`;
+}
+
+function updateMask(f) {
+  const kind = TYPES[f.type].kind;
+  if (kind === 'draw') {
+    const url = `url(${f.customMask.toDataURL()})`;
+    f.viewport.style.webkitMaskImage = url;
+    f.viewport.style.maskImage = url;
+    return;
+  }
+  if (kind !== 'shape') return;
+  const url = `url(${buildMaskCanvas(f.type, f.feather).toDataURL()})`;
+  f.viewport.style.webkitMaskImage = url;
+  f.viewport.style.maskImage = url;
+}
+
+function deleteFrame(f) {
+  f.el.remove();
+  state.frames = state.frames.filter(o => o !== f);
+  if (state.selectedId === f.id) select(null);
+}
+
+/* ---------------- 选中与操作栏 ---------------- */
+function selectedFrame() { return state.frames.find(f => f.id === state.selectedId) || null; }
+
+function select(id) {
+  state.selectedId = id;
+  state.frames.forEach(f => f.el.classList.toggle('selected', f.id === id));
+  syncActionBar();
+  syncVideo();
+}
+
+function syncActionBar() {
+  $('#ab-normal').style.display = state.drawing ? 'none' : 'flex';
+  $('#ab-draw').style.display = state.drawing ? 'flex' : 'none';
+  if (state.drawing) return;
+  const f = selectedFrame();
+  const isShape = f && TYPES[f.type].kind === 'shape';
+  $('#ab-shutter').style.display = f && !f.captured ? 'block' : 'none';
+  $('#ab-flip').style.display = f && !f.captured ? 'flex' : 'none';
+  $('#ab-retake').style.display = f && f.captured ? 'flex' : 'none';
+  $('#ab-del').style.display = f ? 'flex' : 'none';
+  $('#ab-feather').style.display = isShape ? 'flex' : 'none';
+  $('#ab-hint').style.display = isShape ? 'none' : 'block';
+  if (isShape) $('#feather-range').value = f.feather;
+  if (!f) $('#ab-hint').innerHTML = '点右下角按钮<br>添加取景框';
+  else if (f.captured) $('#ab-hint').textContent = '拖动移动 · 双指旋转缩放 · 拖白色手柄拉宽拉长';
+  else $('#ab-hint').textContent = TYPES[f.type].kind === 'portal' ? '对准另一个世界，按快门' : '对准后按快门';
+}
+
+$('#feather-range').addEventListener('input', e => {
+  const f = selectedFrame();
+  if (!f || TYPES[f.type].kind !== 'shape') return;
+  f.feather = +e.target.value;
+  updateMask(f);
+});
+
+/* ---------------- 摄像头 ---------------- */
+// 一条流，两个出口：首屏全屏 camBg + 取景框内 video
+async function ensureCamera() {
+  if (state.stream) return;
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: state.facing, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      audio: false,
+    });
+    video.srcObject = state.stream;
+    camBg.srcObject = state.stream;
+    await video.play().catch(() => {});
+    await camBg.play().catch(() => {});
+  } catch (err) {
+    alert('无法访问摄像头：' + err.message + '\n（需要 HTTPS 或 localhost 环境，并授权摄像头）');
+  }
+}
+
+function applyMirror() {
+  const m = state.facing === 'user';
+  video.classList.toggle('mirror', m);
+  camBg.classList.toggle('mirror', m);
+}
+
+async function flipCamera() {
+  const next = state.facing === 'user' ? 'environment' : 'user';
+  try {
+    // 先拿新流再停旧流：全程存在活动流，iOS 不会重复弹授权
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: next, width: { ideal: 1920 }, height: { ideal: 1920 } },
+      audio: false,
+    });
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    state.stream = newStream;
+    state.facing = next;
+    video.srcObject = newStream;
+    camBg.srcObject = newStream;
+    applyMirror();
+    await video.play().catch(() => {});
+    await camBg.play().catch(() => {});
+  } catch (err) {
+    alert('切换摄像头失败：' + err.message);
+  }
+}
+$('#ab-flip').onclick = flipCamera;
+$('#home-flip').onclick = flipCamera;
+
+// 摄像头画面只挂到「当前选中且未拍」的框里
+function syncVideo() {
+  const f = selectedFrame();
+  // 先恢复所有未拍框的占位图（摄像头离开哪个框，哪个框重新显示占位）
+  state.frames.forEach(o => { if (!o.captured) o.placeholder.style.display = 'flex'; });
+  if (f && !f.captured) {
+    f.viewport.appendChild(video);
+    video.style.display = 'block';
+    video.classList.toggle('mirror', state.facing === 'user');
+    f.placeholder.style.display = 'none';
+    // 重新挂载后主动 play，避免画面停住或取到黑帧
+    ensureCamera().then(() => video.play().catch(() => {}));
+  } else {
+    video.style.display = 'none';
+    if (video.parentNode) video.remove();
+  }
+}
+
+/* ---------------- 快门 / 重拍 / 删除 ---------------- */
+$('#ab-shutter').onclick = () => {
+  const f = selectedFrame();
+  if (!f || f.captured) return;
+  if (!state.stream || !video.videoWidth) { alert('摄像头还没准备好，稍等一下'); return; }
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const c = document.createElement('canvas');
+  c.width = vw; c.height = vh;
+  const x = c.getContext('2d');
+  if (state.facing === 'user') { x.translate(vw, 0); x.scale(-1, 1); } // 自拍镜像
+  x.drawImage(video, 0, 0);
+  f.captured = c.toDataURL('image/jpeg', 0.92);
+
+  const img = document.createElement('img');
+  img.src = f.captured;
+  img.draggable = false;
+  f.viewport.appendChild(img);
+  video.style.display = 'none';
+  if (video.parentNode) video.remove();
+  f.placeholder.style.display = 'none';
+
+  flashOnce();
+  if (navigator.vibrate) navigator.vibrate(15);
+  syncActionBar();
+};
+
+$('#ab-retake').onclick = () => {
+  const f = selectedFrame();
+  if (!f || !f.captured) return;
+  f.captured = null;
+  const img = f.viewport.querySelector('img');
+  if (img) img.remove();
+  select(f.id); // 重新挂摄像头
+};
+
+$('#ab-del').onclick = () => {
+  const f = selectedFrame();
+  if (f) deleteFrame(f);
+};
+
+/* ---------------- 手势：统一控制器 ----------------
+ * 设计要点（避免误触 / 移不动）：
+ * - 点按只负责选中，不移动；单指拖动超过 ~10px 阈值才开始移动
+ * - 双指在舞台任意位置捏合，都作用于「当前选中」的框（小框也好操作）
+ * - 捏合后抬起一指，剩余一指重新锚定为拖动，不跳变
+ * - 全部指针由舞台统一接管（pointer capture 挂在 stageWrap），不依赖框自身命中
+ */
+const gesture = { pts: new Map(), mode: null, frame: null, moved: 0, t: 0, tapFrame: null };
+const gDist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const gAng = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+
+stageWrap.addEventListener('pointerdown', e => {
+  if (e.target.closest('.caption')) return; // 拍立得文字编辑，不参与手势
+  e.preventDefault();
+  try { stageWrap.setPointerCapture(e.pointerId); } catch (_) {}
+  gesture.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (gesture.pts.size === 1) {
+    gesture.moved = 0;
+    gesture.t = Date.now();
+    // 优先命中拉伸手柄
+    const handleEl = e.target.closest('.ff-handle');
+    const hostEl = handleEl ? handleEl.closest('.frame') : e.target.closest('.frame');
+    const hit = hostEl ? state.frames.find(f => f.el === hostEl) : null;
+    gesture.tapFrame = hit;
+    if (!hit) return;
+    gesture.frame = hit;
+    gesture.sx = e.clientX; gesture.sy = e.clientY;
+    if (handleEl) {
+      gesture.mode = 'stretch';
+      gesture.dir = handleEl.dataset.dir;
+      gesture.ow = hit.w; gesture.oh = hit.h;
+    } else {
+      gesture.mode = 'move';
+      gesture.ocx = hit.cx; gesture.ocy = hit.cy;
+    }
+    select(hit.id);
+  } else if (gesture.pts.size === 2) {
+    const f = selectedFrame();
+    if (f) {
+      const p = [...gesture.pts.values()];
+      gesture.mode = 'pinch';
+      gesture.frame = f;
+      gesture.d0 = gDist(p[0], p[1]);
+      gesture.a0 = gAng(p[0], p[1]);
+      gesture.w0 = f.w; gesture.h0 = f.h;
+      gesture.r0 = f.rot;
+    }
+  }
+});
+
+stageWrap.addEventListener('pointermove', e => {
+  if (!gesture.pts.has(e.pointerId)) return;
+  gesture.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const g = gesture;
+
+  if (g.mode === 'stretch' && g.pts.size === 1 && g.frame) {
+    // 拉伸手柄：位移投影到框自身坐标系（旋转后方向仍正确）
+    const f = g.frame;
+    const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+    g.moved = Math.max(g.moved, Math.hypot(dx, dy));
+    if (g.moved <= 6) return;
+    const rad = -f.rot * Math.PI / 180;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+    const sw = stage.clientWidth;
+    if (g.dir !== 's') f.w = clamp(g.ow + lx / sw, 0.06, 1.5);
+    if (g.dir !== 'e') f.h = clamp(g.oh + ly / sw, 0.06, 1.5);
+    renderFrame(f);
+    return;
+  }
+  if (g.mode === 'move' && g.pts.size === 1 && g.frame) {
+    const dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+    g.moved = Math.max(g.moved, Math.hypot(dx, dy));
+    if (g.moved <= 10) return; // 阈值内视为点按/抖动，不动
+    const r = stage.getBoundingClientRect();
+    g.frame.cx = clamp(g.ocx + dx / r.width, 0, 1);
+    g.frame.cy = clamp(g.ocy + dy / r.height, 0, 1);
+    renderFrame(g.frame);
+  } else if (g.mode === 'pinch' && g.pts.size >= 2 && g.frame) {
+    // 双指捏合：宽高同比例缩放（整体放大缩小），旋转照旧
+    const p = [...g.pts.values()];
+    const d = gDist(p[0], p[1]), a = gAng(p[0], p[1]);
+    const k = g.d0 > 0 ? d / g.d0 : 1;
+    g.frame.w = clamp(g.w0 * k, 0.06, 1.5);
+    g.frame.h = clamp(g.h0 * k, 0.06, 1.5);
+    g.frame.rot = g.r0 + (a - g.a0) * 180 / Math.PI;
+    renderFrame(g.frame);
+  }
+});
+
+const gestureUp = e => {
+  const g = gesture;
+  if (!g.pts.has(e.pointerId)) return;
+  g.pts.delete(e.pointerId);
+  if (g.pts.size === 1 && g.mode === 'pinch' && g.frame) {
+    // 捏合变单指：重新锚定起点，避免位置跳变
+    const p = [...g.pts.values()][0];
+    g.mode = 'move';
+    g.sx = p.x; g.sy = p.y;
+    g.ocx = g.frame.cx; g.ocy = g.frame.cy;
+    g.moved = 99; // 不当作点按
+  } else if (g.pts.size === 0) {
+    if (g.moved < 10 && Date.now() - g.t < 600) {
+      // 点按：选中框 / 点空白取消选中
+      select(g.tapFrame ? g.tapFrame.id : null);
+    }
+    g.mode = null; g.frame = null; g.tapFrame = null; g.moved = 0;
+  }
+};
+stageWrap.addEventListener('pointerup', gestureUp);
+stageWrap.addEventListener('pointercancel', gestureUp);
+
+/* ---------------- 取景框弹层 ---------------- */
+function openSheet() {
+  if (state.drawing) return; // 绘制模式中先画完或取消
+  $('#sheet-mask').classList.add('open');
+  $('#sheet').classList.add('open');
+}
+function closeSheet() {
+  $('#sheet-mask').classList.remove('open');
+  $('#sheet').classList.remove('open');
+}
+$('#home-frames').onclick = openSheet;
+$('#edit-frames').onclick = openSheet;
+$('#sheet-close').onclick = closeSheet;
+$('#sheet-mask').onclick = closeSheet;
+
+// 用真实渲染生成弹层卡片（形状用同款蒙版）
+const sheetRow = $('#sheet-row');
+Object.entries(TYPES).forEach(([type, t]) => {
+  const card = document.createElement('button');
+  card.className = 'card';
+  let pv;
+  if (t.kind === 'shape') pv = `<span class="pv"><span class="ph" data-mask="${type}"></span></span>`;
+  else if (type === 'polaroid') pv = `<span class="pv"><span class="pv-polaroid"><span class="po"></span><span class="pc"></span></span></span>`;
+  else if (type === 'portal') pv = `<span class="pv"><span class="pv-portal"></span></span>`;
+  else pv = `<span class="pv"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z"/><path d="M14.5 6.5l3 3"/></svg></span>`;
+  card.innerHTML = pv + `<span>${t.label}</span>`;
+  card.addEventListener('click', () => {
+    closeSheet();
+    if (!state.imgNat) {
+      // 还没有背景：先把当前相机画面定格为背景，进编辑页后自动补建框/进入绘制
+      if (!captureBackground()) return;
+      pendingFrameType = type;
+    } else if (type === 'draw') {
+      enterDrawMode();
+    } else {
+      createFrame(type, 0.5, 0.5);
+    }
+  });
+  sheetRow.appendChild(card);
+});
+sheetRow.querySelectorAll('[data-mask]').forEach(el => {
+  const url = `url(${buildMaskCanvas(el.dataset.mask, 5).toDataURL()})`;
+  el.style.webkitMaskImage = url;
+  el.style.maskImage = url;
+});
+
+/* ---------------- 画笔：圈地生成取景框 ----------------
+ * 模型：一条有序点列。多次落笔会向点列追加（笔画间自动以直线衔接），
+ * 橡皮按半径删除点；确认时把终点与起点用直线闭合并平滑，填成蒙版。
+ */
+const dcan = $('#draw-canvas'), dctx = dcan.getContext('2d');
+let drawPts = [];        // [{x,y}] 舞台像素坐标
+let drawHistory = [];    // 撤销栈（点列快照）
+let drawErasing = false; // 橡皮模式
+let drawActive = false;  // 手指按下中
+const DRAW_MIN_PTS = 8;
+
+function enterDrawMode() {
+  state.drawing = true;
+  select(null);
+  drawPts = []; drawHistory = []; drawErasing = false; drawActive = false;
+  $('#draw-erase').classList.remove('on');
+  const dpr = window.devicePixelRatio || 1;
+  dcan.width = stage.clientWidth * dpr;
+  dcan.height = stage.clientHeight * dpr;
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  dcan.style.display = 'block';
+  syncActionBar();
+}
+function exitDrawMode() {
+  state.drawing = false;
+  dcan.style.display = 'none';
+  syncActionBar();
+}
+
+function drawPoint(e) {
+  const r = stage.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function renderDraw() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  dctx.clearRect(0, 0, W, H);
+  const pts = drawPts;
+  if (!pts.length) return;
+  dctx.lineJoin = 'round'; dctx.lineCap = 'round';
+  // 封闭区域填充预览（抬笔后）
+  if (!drawActive && pts.length > 2) {
+    dctx.beginPath();
+    dctx.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts) dctx.lineTo(p.x, p.y);
+    dctx.closePath();
+    dctx.fillStyle = 'rgba(255,255,255,.14)';
+    dctx.fill();
+  }
+  // 边缘线：未封闭时把终点直线连回起点（即最终效果的预览）
+  dctx.beginPath();
+  dctx.moveTo(pts[0].x, pts[0].y);
+  for (const p of pts) dctx.lineTo(p.x, p.y);
+  if (!drawActive) dctx.lineTo(pts[0].x, pts[0].y);
+  dctx.strokeStyle = '#fff';
+  dctx.lineWidth = 4;
+  dctx.shadowColor = 'rgba(0,0,0,.65)';
+  dctx.shadowBlur = 3;
+  dctx.stroke();
+  dctx.shadowBlur = 0;
+}
+
+function eraseAt(x, y) {
+  const R = 20;
+  drawPts = drawPts.filter(p => Math.hypot(p.x - x, p.y - y) > R);
+}
+
+dcan.addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  try { dcan.setPointerCapture(e.pointerId); } catch (_) {}
+  drawHistory.push(drawPts.slice());
+  if (drawHistory.length > 30) drawHistory.shift();
+  drawActive = true;
+  const p = drawPoint(e);
+  if (drawErasing) { eraseAt(p.x, p.y); renderDraw(); }
+  else { drawPts = drawPts.concat([p]); renderDraw(); }
+});
+dcan.addEventListener('pointermove', e => {
+  if (!drawActive) return;
+  e.stopPropagation();
+  const p = drawPoint(e);
+  if (drawErasing) {
+    eraseAt(p.x, p.y);
+  } else {
+    const last = drawPts[drawPts.length - 1];
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 3) drawPts.push(p);
+  }
+  renderDraw();
+});
+const drawUp = e => {
+  if (!drawActive) return;
+  e.stopPropagation();
+  drawActive = false;
+  renderDraw();
+};
+dcan.addEventListener('pointerup', drawUp);
+dcan.addEventListener('pointercancel', drawUp);
+
+$('#draw-erase').onclick = () => {
+  drawErasing = !drawErasing;
+  $('#draw-erase').classList.toggle('on', drawErasing);
+};
+$('#draw-undo').onclick = () => {
+  if (drawHistory.length) { drawPts = drawHistory.pop(); renderDraw(); }
+};
+$('#draw-clear').onclick = () => {
+  if (!drawPts.length) return;
+  drawHistory.push(drawPts.slice());
+  drawPts = [];
+  renderDraw();
+};
+$('#draw-cancel').onclick = () => exitDrawMode();
+
+// Chaikin 角切平滑（闭合多边形）
+function chaikin(pts, iter) {
+  let a = pts;
+  for (let k = 0; k < iter; k++) {
+    const b = [];
+    for (let i = 0; i < a.length; i++) {
+      const p = a[i], q = a[(i + 1) % a.length];
+      b.push({ x: p.x * 0.75 + q.x * 0.25, y: p.y * 0.75 + q.y * 0.25 });
+      b.push({ x: p.x * 0.25 + q.x * 0.75, y: p.y * 0.25 + q.y * 0.75 });
+    }
+    a = b;
+  }
+  return a;
+}
+
+$('#draw-done').onclick = () => {
+  if (drawPts.length < DRAW_MIN_PTS) { alert('先圈出一个区域再生成'); return; }
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  const pts = chaikin(drawPts, 2);
+  const m = 8;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of pts) {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+  }
+  minX -= m; minY -= m; maxX += m; maxY += m;
+  const bw = maxX - minX, bh = maxY - minY;
+  // 手绘蒙版：白色填充 + 轻微羽化，分辨率适配导出
+  const scale = Math.min(1024 / bw, 1024 / bh, 4);
+  const mc = document.createElement('canvas');
+  mc.width = Math.max(2, Math.round(bw * scale));
+  mc.height = Math.max(2, Math.round(bh * scale));
+  const mx = mc.getContext('2d');
+  mx.scale(scale, scale);
+  mx.translate(-minX, -minY);
+  mx.beginPath();
+  mx.moveTo(pts[0].x, pts[0].y);
+  for (const p of pts) mx.lineTo(p.x, p.y);
+  mx.closePath();
+  mx.fillStyle = '#fff';
+  mx.shadowColor = '#fff';
+  mx.shadowBlur = 2 * scale;
+  mx.fill();
+  const f = {
+    id: 'f' + (++seq), type: 'draw',
+    cx: (minX + bw / 2) / sw, cy: (minY + bh / 2) / sh,
+    w: bw / sw, h: bh / sw,
+    rot: 0, feather: 0, captured: null, caption: '',
+    customMask: mc,
+  };
+  state.frames.push(f);
+  buildFrameEl(f);
+  exitDrawMode();
+  select(f.id);
+  ensureCamera();
+};
+
+/* ---------------- 导出合成 ---------------- */
+function loadImgEl(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = src;
+  });
+}
+// cover 裁切绘制
+function coverDraw(x, img, px, py, w, h) {
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const s = Math.max(w / iw, h / ih);
+  const dw = iw * s, dh = ih * s;
+  x.save();
+  x.beginPath(); x.rect(px, py, w, h); x.clip();
+  x.drawImage(img, px + (w - dw) / 2, py + (h - dh) / 2, dw, dh);
+  x.restore();
+}
+
+async function drawFrameExport(x, f, sx, W, H) {
+  const img = await loadImgEl(f.captured);
+  const kind = TYPES[f.type].kind;
+  const w = f.w * stage.clientWidth * sx;
+  const h = f.h * stage.clientWidth * sx;
+  const cx = f.cx * stage.clientWidth * sx;
+  const cy = f.cy * stage.clientHeight * sx;
+
+  const oc = document.createElement('canvas');
+  oc.width = Math.round(w); oc.height = Math.round(h);
+  const o = oc.getContext('2d');
+
+  x.save();
+  x.translate(cx, cy);
+  x.rotate(f.rot * Math.PI / 180);
+
+  if (kind === 'polaroid') {
+    o.fillStyle = '#fdfdf8';
+    o.fillRect(0, 0, w, h);
+    const m = w * 0.05, ph = w - 2 * m;
+    coverDraw(o, img, m, m, ph, ph);
+    if (f.caption) {
+      o.fillStyle = '#3a3a3a';
+      o.font = `${w * 0.09}px "Bradley Hand", "Segoe Print", cursive`;
+      o.textAlign = 'center'; o.textBaseline = 'middle';
+      o.fillText(f.caption, w / 2, (m + ph + h) / 2);
+    }
+    x.shadowColor = 'rgba(0,0,0,.4)';
+    x.shadowBlur = w * 0.06;
+    x.shadowOffsetY = w * 0.02;
+    x.drawImage(oc, -w / 2, -h / 2);
+  } else {
+    coverDraw(o, img, 0, 0, w, h);
+    o.globalCompositeOperation = 'destination-in';
+    o.drawImage(
+      kind === 'portal' ? buildMaskCanvas('circle', 2)
+      : kind === 'draw' ? f.customMask
+      : buildMaskCanvas(f.type, f.feather),
+      0, 0, w, h);
+    o.globalCompositeOperation = 'source-over';
+    if (kind === 'portal') {
+      const R = w / 2;
+      const g = x.createRadialGradient(0, 0, R * 0.75, 0, 0, R * 1.28);
+      g.addColorStop(0, 'rgba(120,255,90,.55)');
+      g.addColorStop(1, 'rgba(120,255,90,0)');
+      x.fillStyle = g;
+      x.beginPath(); x.arc(0, 0, R * 1.28, 0, Math.PI * 2); x.fill();
+      x.drawImage(oc, -w / 2, -h / 2);
+      x.shadowColor = '#7cff6b'; x.shadowBlur = R * 0.28;
+      x.strokeStyle = '#baff7d'; x.lineWidth = Math.max(2, R * 0.045);
+      x.beginPath(); x.arc(0, 0, R * 0.97, 0, Math.PI * 2); x.stroke();
+    } else {
+      x.drawImage(oc, -w / 2, -h / 2);
+    }
+  }
+  x.restore();
+}
+
+$('#edit-export').onclick = async () => {
+  if (!state.imgNat) return;
+  if (!state.frames.some(f => f.captured)) { alert('还没有拍好的取景框，先按快门拍一个'); return; }
+  const { w: W, h: H } = state.imgNat;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.drawImage(baseImg, 0, 0, W, H);
+  const sx = W / stage.clientWidth;
+  for (const f of state.frames) {
+    if (f.captured) await drawFrameExport(x, f, sx, W, H);
+  }
+  const url = c.toDataURL('image/jpeg', 0.92);
+  $('#overlay-img').src = url;
+  $('#overlay-dl').href = url;
+  $('#overlay').style.display = 'flex';
+};
+$('#overlay-close').onclick = () => { $('#overlay').style.display = 'none'; };
+
+/* ---------------- 启动：首屏直接开相机 ---------------- */
+applyMirror();
+ensureCamera();
+
+/* 禁止长按弹系统菜单（安卓 Chrome 走 contextmenu）；拍立得文字与导出结果图除外 */
+document.addEventListener('contextmenu', e => {
+  if (e.target.closest('.caption') || e.target.id === 'overlay-img') return;
+  e.preventDefault();
+});
+</script>
+</body>
+</html>
